@@ -1050,7 +1050,7 @@ async function loadPatronesRecomendaciones(productoId) {
     }
 }
 
-// Crear gráfico de ventas usando datos del analytics API
+// Crear gráfico de ventas usando analytics API
 function createProductoVentasChartFromAnalytics(historicoVentas) {
     const ctx = document.getElementById('producto-ventas-chart').getContext('2d');
     
