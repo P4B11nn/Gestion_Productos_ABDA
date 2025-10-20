@@ -1,0 +1,64 @@
+USE tiendabd;
+
+-- Crear tabla para patrones de compra (antecedente-consecuente)
+CREATE TABLE PatronesCompra (
+    patron_id INT PRIMARY KEY AUTO_INCREMENT,
+    antecedente VARCHAR(255) NOT NULL,  -- Ej: "1,2" (productos A y B)
+    consecuente VARCHAR(255) NOT NULL,  -- Ej: "3" (producto C)
+    soporte DECIMAL(5,4) NOT NULL,      -- Grado de credibilidad
+    confianza DECIMAL(5,4) NOT NULL,    -- Grado de confianza
+    lift DECIMAL(5,4) NOT NULL,         -- Valor de probabilidad
+    fecha_calculo DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Ejemplo: Calcular patrones de compra simples (productos comprados juntos en la misma transacción)
+
+-- Calcular patrones
+INSERT INTO PatronesCompra (antecedente, consecuente, soporte, confianza, lift)
+SELECT 
+    a.producto_id AS antecedente,  -- Usa el producto_id más común como antecedente
+    b.producto_id AS consecuente,  -- Usa otro producto_id común como consecuente
+    COALESCE((COUNT(DISTINCT CASE WHEN b.transaccion_id IS NOT NULL THEN a.transaccion_id END) / NULLIF(COUNT(DISTINCT a.transaccion_id), 0)), 0) AS soporte,
+    COALESCE((COUNT(DISTINCT CASE WHEN b.transaccion_id IS NOT NULL THEN a.transaccion_id END) / NULLIF(COUNT(DISTINCT a.transaccion_id), 0)), 0) AS confianza,
+    COALESCE(((COUNT(DISTINCT CASE WHEN b.transaccion_id IS NOT NULL THEN a.transaccion_id END) / NULLIF(COUNT(DISTINCT a.transaccion_id), 0)) / 
+              (COUNT(DISTINCT b.transaccion_id) / NULLIF(COUNT(DISTINCT a.transaccion_id), 0))), 1.0) AS lift
+FROM HechosVentas a
+LEFT JOIN HechosVentas b ON a.transaccion_id = b.transaccion_id AND a.producto_id < b.producto_id
+WHERE a.producto_id IN (SELECT producto_id FROM HechosVentas GROUP BY producto_id HAVING COUNT(*) > 10)  -- Productos con al menos 10 transacciones
+GROUP BY a.producto_id, b.producto_id
+HAVING soporte > 0 AND COUNT(DISTINCT a.transaccion_id) > 0;
+
+-- Ver resultados
+SELECT * FROM PatronesCompra LIMIT 2000;
+
+-- Más ejemplos: Calcula para otros pares de productos
+-- Repite la query para otros pares, o usa un procedimiento para calcular todos
+DELIMITER //
+CREATE PROCEDURE CalcularPatronesCompra()
+BEGIN
+    -- Limpiar tabla
+    TRUNCATE TABLE PatronesCompra;
+
+    -- Calcular para todos los pares (ejemplo simplificado para 2 productos por transacción)
+    INSERT INTO PatronesCompra (antecedente, consecuente, soporte, confianza, lift)
+    SELECT 
+        GROUP_CONCAT(DISTINCT p1.producto_id ORDER BY p1.producto_id) AS antecedente,
+        p2.producto_id AS consecuente,
+        COUNT(DISTINCT CASE WHEN p1.transaccion_id = p2.transaccion_id THEN p1.transaccion_id END) / COUNT(DISTINCT p1.transaccion_id) AS soporte,
+        COUNT(DISTINCT CASE WHEN p1.transaccion_id = p2.transaccion_id THEN p1.transaccion_id END) / COUNT(DISTINCT p1.transaccion_id) AS confianza,
+        (COUNT(DISTINCT CASE WHEN p1.transaccion_id = p2.transaccion_id THEN p1.transaccion_id END) / COUNT(DISTINCT p1.transaccion_id)) / (COUNT(DISTINCT p2.transaccion_id) / COUNT(DISTINCT p1.transaccion_id)) AS lift
+    FROM HechosVentas p1
+    JOIN HechosVentas p2 ON p1.transaccion_id = p2.transaccion_id AND p1.producto_id < p2.producto_id
+    GROUP BY p2.producto_id
+    HAVING soporte > 0.01;  -- Filtrar patrones con soporte mínimo (ajusta según necesidades)
+END //
+DELIMITER ;
+
+-- Ejecutar el procedimiento
+CALL CalcularPatronesCompra();
+describe PatronesCompra;
+-- Ver resultados
+SELECT * FROM PatronesCompra order by patron_id desc ;
+-- esto lo borrare
+
+

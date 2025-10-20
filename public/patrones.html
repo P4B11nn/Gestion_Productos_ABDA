@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análisis de Patrones de Compra</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --card-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-color);
+            padding-top: 60px;
+        }
+        
+        .navbar {
+            background-color: var(--secondary-color);
+        }
+        
+        .navbar-brand {
+            color: white;
+            font-weight: bold;
+        }
+        
+        .card {
+            border-radius: 10px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 25px;
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .card-header {
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+            font-weight: bold;
+        }
+        
+        .patron-card {
+            border-left: 5px solid var(--primary-color);
+        }
+        
+        .patron-card.high-confidence {
+            border-left-color: var(--success-color);
+        }
+        
+        .patron-card.medium-confidence {
+            border-left-color: var(--warning-color);
+        }
+        
+        .patron-card.low-confidence {
+            border-left-color: var(--accent-color);
+        }
+        
+        .metric-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .metric-confianza {
+            background-color: rgba(39, 174, 96, 0.1);
+            color: var(--success-color);
+        }
+        
+        .metric-soporte {
+            background-color: rgba(52, 152, 219, 0.1);
+            color: var(--primary-color);
+        }
+        
+        .metric-lift {
+            background-color: rgba(243, 156, 18, 0.1);
+            color: var(--warning-color);
+        }
+        
+        .producto-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .producto-link:hover {
+            color: var(--accent-color);
+            text-decoration: underline;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+        
+        .loading:after {
+            content: " ";
+            display: block;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 6px solid var(--primary-color);
+            border-color: var(--primary-color) transparent var(--primary-color) transparent;
+            animation: loading 1.2s linear infinite;
+        }
+        
+        @keyframes loading {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Barra de navegación -->
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="/analisis.html">
+                <i class="fas fa-brain me-2"></i>
+                Análisis de Patrones de Compra
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/analisis.html">
+                            <i class="fas fa-chart-line me-1"></i>
+                            Dashboard Principal
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/patrones.html">
+                            <i class="fas fa-brain me-1"></i>
+                            Patrones de Compra
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Contenido principal -->
+    <div class="container mt-4">
+        <!-- Encabezado -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1><i class="fas fa-brain me-2"></i>Patrones de Compra Detectados</h1>
+                <p class="text-muted">Análisis de patrones de compra basado en reglas de asociación y comportamiento del cliente</p>
+            </div>
+        </div>
+
+        <!-- Estadísticas generales -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-project-diagram fa-2x text-primary mb-2"></i>
+                        <h3 id="total-patrones" class="mb-1">--</h3>
+                        <p class="text-muted mb-0">Total Patrones</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-star fa-2x text-success mb-2"></i>
+                        <h3 id="patrones-alta-confianza" class="mb-1">--</h3>
+                        <p class="text-muted mb-0">Alta Confianza</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-chart-line fa-2x text-warning mb-2"></i>
+                        <h3 id="confianza-promedio" class="mb-1">--</h3>
+                        <p class="text-muted mb-0">Confianza Promedio</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="fas fa-rocket fa-2x text-info mb-2"></i>
+                        <h3 id="lift-promedio" class="mb-1">--</h3>
+                        <p class="text-muted mb-0">Lift Promedio</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label">Filtrar por confianza mínima:</label>
+                        <select class="form-select" id="filtro-confianza">
+                            <option value="0">Todos los patrones</option>
+                            <option value="0.1">Confianza ≥ 10%</option>
+                            <option value="0.3">Confianza ≥ 30%</option>
+                            <option value="0.5">Confianza ≥ 50%</option>
+                            <option value="0.7">Confianza ≥ 70%</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Ordenar por:</label>
+                        <select class="form-select" id="ordenar-por">
+                            <option value="confianza">Confianza</option>
+                            <option value="soporte">Soporte</option>
+                            <option value="lift">Lift</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Buscar producto:</label>
+                        <input type="text" class="form-control" id="buscar-producto" placeholder="Nombre del producto...">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de patrones -->
+        <div id="patrones-container">
+            <div class="loading"></div>
+        </div>
+
+        <!-- Paginación -->
+        <nav id="paginacion-nav" class="d-none">
+            <ul class="pagination justify-content-center">
+                <li class="page-item" id="btn-anterior">
+                    <a class="page-link" href="#" aria-label="Anterior">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                <li class="page-item active">
+                    <a class="page-link" href="#" id="pagina-actual">1</a>
+                </li>
+                <li class="page-item" id="btn-siguiente">
+                    <a class="page-link" href="#" aria-label="Siguiente">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Configuración
+        const API_URL = '/api';
+        let todosLosPatrones = [];
+        let patronesFiltrados = [];
+        let paginaActual = 1;
+        const patronesPorPagina = 10;
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            cargarPatrones();
+            setupEventListeners();
+        });
+
+        // Configurar event listeners
+        function setupEventListeners() {
+            document.getElementById('filtro-confianza').addEventListener('change', filtrarPatrones);
+            document.getElementById('ordenar-por').addEventListener('change', ordenarPatrones);
+            document.getElementById('buscar-producto').addEventListener('input', buscarProducto);
+            
+            document.getElementById('btn-anterior').addEventListener('click', function(e) {
+                e.preventDefault();
+                if (paginaActual > 1) {
+                    paginaActual--;
+                    mostrarPatrones();
+                }
+            });
+            
+            document.getElementById('btn-siguiente').addEventListener('click', function(e) {
+                e.preventDefault();
+                const totalPaginas = Math.ceil(patronesFiltrados.length / patronesPorPagina);
+                if (paginaActual < totalPaginas) {
+                    paginaActual++;
+                    mostrarPatrones();
+                }
+            });
+        }
+
+        // Cargar patrones desde la API
+        async function cargarPatrones() {
+            try {
+                const response = await fetch(`${API_URL}/patrones/todos`);
+                const data = await response.json();
+                
+                if (data.success && data.patrones) {
+                    todosLosPatrones = data.patrones;
+                    patronesFiltrados = [...todosLosPatrones];
+                    
+                    actualizarEstadisticas();
+                    mostrarPatrones();
+                } else {
+                    mostrarError('No se pudieron cargar los patrones');
+                }
+            } catch (error) {
+                console.error('Error al cargar patrones:', error);
+                mostrarError('Error al conectar con el servidor');
+            }
+        }
+
+        // Actualizar estadísticas generales
+        function actualizarEstadisticas() {
+            const totalPatrones = todosLosPatrones.length;
+            const patronesAltaConfianza = todosLosPatrones.filter(p => parseFloat(p.confianza) >= 0.7).length;
+            const confianzaPromedio = totalPatrones > 0 ? 
+                (todosLosPatrones.reduce((sum, p) => sum + parseFloat(p.confianza), 0) / totalPatrones) : 0;
+            const liftPromedio = totalPatrones > 0 ? 
+                (todosLosPatrones.reduce((sum, p) => sum + parseFloat(p.lift), 0) / totalPatrones) : 0;
+            
+            document.getElementById('total-patrones').textContent = totalPatrones;
+            document.getElementById('patrones-alta-confianza').textContent = patronesAltaConfianza;
+            document.getElementById('confianza-promedio').textContent = (confianzaPromedio * 100).toFixed(1) + '%';
+            document.getElementById('lift-promedio').textContent = liftPromedio.toFixed(2);
+        }
+
+        // Mostrar patrones con paginación
+        function mostrarPatrones() {
+            const inicio = (paginaActual - 1) * patronesPorPagina;
+            const fin = inicio + patronesPorPagina;
+            const patronesPagina = patronesFiltrados.slice(inicio, fin);
+            
+            const container = document.getElementById('patrones-container');
+            
+            if (patronesPagina.length === 0) {
+                container.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No se encontraron patrones con los filtros aplicados.</div>';
+                document.getElementById('paginacion-nav').classList.add('d-none');
+                return;
+            }
+            
+            let html = '';
+            
+            patronesPagina.forEach(patron => {
+                const confianzaClass = parseFloat(patron.confianza) >= 0.7 ? 'high-confidence' : 
+                                     parseFloat(patron.confianza) >= 0.3 ? 'medium-confidence' : 'low-confidence';
+                
+                html += `
+                    <div class="card patron-card ${confianzaClass}">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h5 class="card-title">
+                                        <i class="fas fa-arrow-right me-2"></i>
+                                        Patrón ${patron.id}
+                                    </h5>
+                                    <p class="mb-2">
+                                        <strong>Si compra:</strong> 
+                                        <a href="/analisis.html#productos" class="producto-link" onclick="buscarProductoEnAnalisis('${patron.producto_antecedente_nombre}')">
+                                            ${patron.producto_antecedente_nombre}
+                                        </a>
+                                    </p>
+                                    <p class="mb-3">
+                                        <strong>También comprará:</strong> 
+                                        <a href="/analisis.html#productos" class="producto-link" onclick="buscarProductoEnAnalisis('${patron.producto_sugerido_nombre}')">
+                                            ${patron.producto_sugerido_nombre}
+                                        </a>
+                                    </p>
+                                    <div>
+                                        <span class="metric-badge metric-confianza">
+                                            <i class="fas fa-chart-line me-1"></i>
+                                            Confianza: ${(parseFloat(patron.confianza) * 100).toFixed(1)}%
+                                        </span>
+                                        <span class="metric-badge metric-soporte">
+                                            <i class="fas fa-chart-bar me-1"></i>
+                                            Soporte: ${(parseFloat(patron.soporte) * 100).toFixed(1)}%
+                                        </span>
+                                        <span class="metric-badge metric-lift">
+                                            <i class="fas fa-rocket me-1"></i>
+                                            Lift: ${parseFloat(patron.lift).toFixed(2)}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 text-end">
+                                    <div class="mb-2">
+                                        <small class="text-muted">Creado: ${new Date(patron.fecha_creacion).toLocaleDateString()}</small>
+                                    </div>
+                                    <button class="btn btn-primary btn-sm" onclick="verDetallePatron(${patron.id})">
+                                        <i class="fas fa-eye me-1"></i>
+                                        Ver Detalles
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+            
+            // Actualizar paginación
+            actualizarPaginacion();
+        }
+
+        // Actualizar controles de paginación
+        function actualizarPaginacion() {
+            const totalPaginas = Math.ceil(patronesFiltrados.length / patronesPorPagina);
+            
+            if (totalPaginas <= 1) {
+                document.getElementById('paginacion-nav').classList.add('d-none');
+                return;
+            }
+            
+            document.getElementById('paginacion-nav').classList.remove('d-none');
+            document.getElementById('pagina-actual').textContent = `${paginaActual} de ${totalPaginas}`;
+            
+            // Habilitar/deshabilitar botones
+            const btnAnterior = document.getElementById('btn-anterior');
+            const btnSiguiente = document.getElementById('btn-siguiente');
+            
+            if (paginaActual === 1) {
+                btnAnterior.classList.add('disabled');
+            } else {
+                btnAnterior.classList.remove('disabled');
+            }
+            
+            if (paginaActual === totalPaginas) {
+                btnSiguiente.classList.add('disabled');
+            } else {
+                btnSiguiente.classList.remove('disabled');
+            }
+        }
+
+        // Filtrar patrones por confianza
+        function filtrarPatrones() {
+            const confianzaMinima = parseFloat(document.getElementById('filtro-confianza').value);
+            patronesFiltrados = todosLosPatrones.filter(patron => patron.confianza >= confianzaMinima);
+            paginaActual = 1;
+            mostrarPatrones();
+        }
+
+        // Ordenar patrones
+        function ordenarPatrones() {
+            const criterio = document.getElementById('ordenar-por').value;
+            patronesFiltrados.sort((a, b) => b[criterio] - a[criterio]);
+            paginaActual = 1;
+            mostrarPatrones();
+        }
+
+        // Buscar producto
+        function buscarProducto() {
+            const termino = document.getElementById('buscar-producto').value.toLowerCase().trim();
+            
+            if (termino === '') {
+                patronesFiltrados = [...todosLosPatrones];
+            } else {
+                patronesFiltrados = todosLosPatrones.filter(patron => 
+                    patron.producto_antecedente_nombre.toLowerCase().includes(termino) ||
+                    patron.producto_sugerido_nombre.toLowerCase().includes(termino)
+                );
+            }
+            
+            // Aplicar filtro de confianza también
+            const confianzaMinima = parseFloat(document.getElementById('filtro-confianza').value);
+            patronesFiltrados = patronesFiltrados.filter(patron => patron.confianza >= confianzaMinima);
+            
+            paginaActual = 1;
+            mostrarPatrones();
+        }
+
+        // Ver detalle de patrón (placeholder)
+        function verDetallePatron(patronId) {
+            alert(`Ver detalles del patrón ${patronId}`);
+        }
+
+        // Buscar producto en análisis
+        function buscarProductoEnAnalisis(nombreProducto) {
+            // Redireccionar al dashboard principal con parámetros
+            window.location.href = `/analisis.html?seccion=productos&buscar=${encodeURIComponent(nombreProducto)}`;
+        }
+
+        // Mostrar error
+        function mostrarError(mensaje) {
+            document.getElementById('patrones-container').innerHTML = 
+                `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>${mensaje}</div>`;
+        }
+    </script>
+</body>
+</html>
