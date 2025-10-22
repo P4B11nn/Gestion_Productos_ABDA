@@ -7,6 +7,8 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
 const path = require('path');
+const PDFDocument = require('pdfkit');
+const ExcelJS = require('exceljs');
 
 // Configuración del servidor
 const app = express();
@@ -959,6 +961,246 @@ app.get('/api/patrones/todos', async (req, res) => {
   }
 });
 
+// Función para generar PDF
+function generarPDF(reporteData) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument();
+      const buffers = [];
+
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => {
+        const pdfData = Buffer.concat(buffers);
+        resolve(pdfData);
+      });
+
+      // Título del reporte
+      doc.fontSize(20).text(`Reporte de ${reporteData.tipo.charAt(0).toUpperCase() + reporteData.tipo.slice(1)}`, { align: 'center' });
+      doc.moveDown();
+
+      // Información del período
+      doc.fontSize(12).text(`Período: ${reporteData.periodo.desde} - ${reporteData.periodo.hasta}`);
+      doc.text(`Generado: ${new Date(reporteData.generado).toLocaleString()}`);
+      doc.moveDown();
+
+      // Resumen
+      if (reporteData.resumen) {
+        doc.fontSize(14).text('Resumen:', { underline: true });
+        doc.fontSize(10);
+        doc.text(`Total de registros: ${reporteData.resumen.total_registros}`);
+        doc.text(`Total vendido: ${reporteData.resumen.total_vendido}`);
+        doc.text(`Ingresos totales: $${parseFloat(reporteData.resumen.ingresos_totales || 0).toFixed(2)}`);
+        doc.text(`Número de transacciones: ${reporteData.resumen.numero_transacciones}`);
+        if (reporteData.resumen.ticket_promedio) {
+          doc.text(`Ticket promedio: $${parseFloat(reporteData.resumen.ticket_promedio || 0).toFixed(2)}`);
+        }
+        doc.moveDown();
+      }
+
+      // Datos detallados
+      if (reporteData.datos && reporteData.datos.length > 0) {
+        doc.fontSize(14).text('Datos Detallados:', { underline: true });
+        doc.moveDown(0.5);
+
+        // Crear tabla simple
+        const tableTop = doc.y;
+        const itemSpacing = 15;
+
+        reporteData.datos.slice(0, 50).forEach((item, index) => {
+          if (doc.y > 700) { // Nueva página si es necesario
+            doc.addPage();
+          }
+
+          let text = '';
+          switch (reporteData.tipo) {
+            case 'ventas':
+              text = `${item.fecha}: ${item.total_vendido} unidades, $${parseFloat(item.ingresos_totales || 0).toFixed(2)}`;
+              break;
+            case 'productos':
+              text = `${item.nombre}: ${item.total_vendido} unidades, $${parseFloat(item.ingresos_totales || 0).toFixed(2)}`;
+              break;
+            case 'categorias':
+              text = `${item.categoria}: ${item.total_vendido} unidades, $${parseFloat(item.ingresos_totales || 0).toFixed(2)}`;
+              break;
+            default:
+              text = JSON.stringify(item);
+          }
+
+          doc.fontSize(9).text(text);
+          doc.moveDown(0.3);
+        });
+      }
+
+      // Para reporte completo
+      if (reporteData.tipo === 'completo') {
+        if (reporteData.topProductos && reporteData.topProductos.length > 0) {
+          doc.addPage();
+          doc.fontSize(14).text('Top Productos:', { underline: true });
+          doc.moveDown(0.5);
+
+          reporteData.topProductos.forEach((producto, index) => {
+            doc.fontSize(10).text(`${index + 1}. ${producto.nombre}: ${producto.total_vendido} unidades, $${parseFloat(producto.ingresos_totales || 0).toFixed(2)}`);
+          });
+        }
+
+        if (reporteData.categorias && reporteData.categorias.length > 0) {
+          doc.addPage();
+          doc.fontSize(14).text('Categorías:', { underline: true });
+          doc.moveDown(0.5);
+
+          reporteData.categorias.forEach((categoria, index) => {
+            doc.fontSize(10).text(`${categoria.categoria}: ${categoria.total_vendido} unidades, $${parseFloat(categoria.ingresos_totales || 0).toFixed(2)}`);
+          });
+        }
+      }
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+// Función para generar Excel
+async function generarExcel(reporteData) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Sistema de Análisis de Tienda';
+  workbook.created = new Date();
+
+  // Hoja principal
+  const worksheet = workbook.addWorksheet('Reporte');
+
+  // Título
+  worksheet.mergeCells('A1:F1');
+  worksheet.getCell('A1').value = `Reporte de ${reporteData.tipo.charAt(0).toUpperCase() + reporteData.tipo.slice(1)}`;
+  worksheet.getCell('A1').font = { size: 16, bold: true };
+  worksheet.getCell('A1').alignment = { horizontal: 'center' };
+
+  // Información del período
+  worksheet.getCell('A3').value = 'Período:';
+  worksheet.getCell('B3').value = `${reporteData.periodo.desde} - ${reporteData.periodo.hasta}`;
+  worksheet.getCell('A4').value = 'Generado:';
+  worksheet.getCell('B4').value = new Date(reporteData.generado).toLocaleString();
+
+  let currentRow = 6;
+
+  // Resumen
+  if (reporteData.resumen) {
+    worksheet.getCell(`A${currentRow}`).value = 'RESUMEN';
+    worksheet.getCell(`A${currentRow}`).font = { bold: true };
+    currentRow++;
+
+    worksheet.getCell(`A${currentRow}`).value = 'Total de registros:';
+    worksheet.getCell(`B${currentRow}`).value = reporteData.resumen.total_registros;
+    currentRow++;
+
+    worksheet.getCell(`A${currentRow}`).value = 'Total vendido:';
+    worksheet.getCell(`B${currentRow}`).value = reporteData.resumen.total_vendido;
+    currentRow++;
+
+    worksheet.getCell(`A${currentRow}`).value = 'Ingresos totales:';
+    worksheet.getCell(`B${currentRow}`).value = reporteData.resumen.ingresos_totales;
+    currentRow++;
+
+    worksheet.getCell(`A${currentRow}`).value = 'Número de transacciones:';
+    worksheet.getCell(`B${currentRow}`).value = reporteData.resumen.numero_transacciones;
+    currentRow++;
+
+    if (reporteData.resumen.ticket_promedio) {
+      worksheet.getCell(`A${currentRow}`).value = 'Ticket promedio:';
+      worksheet.getCell(`B${currentRow}`).value = reporteData.resumen.ticket_promedio;
+      currentRow++;
+    }
+
+    currentRow++; // Espacio
+  }
+
+  // Datos detallados
+  if (reporteData.datos && reporteData.datos.length > 0) {
+    worksheet.getCell(`A${currentRow}`).value = 'DATOS DETALLADOS';
+    worksheet.getCell(`A${currentRow}`).font = { bold: true };
+    currentRow++;
+
+    // Headers
+    let headers = [];
+    switch (reporteData.tipo) {
+      case 'ventas':
+        headers = ['Fecha', 'Transacciones', 'Total Vendido', 'Ingresos Totales', 'Precio Promedio', 'Productos Diferentes'];
+        break;
+      case 'productos':
+        headers = ['ID', 'Nombre', 'Categoría', 'Precio Actual', 'Total Vendido', 'Ingresos Totales', 'Precio Promedio', 'Transacciones', 'Primera Venta', 'Última Venta'];
+        break;
+      case 'categorias':
+        headers = ['Categoría', 'Cantidad Productos', 'Total Vendido', 'Ingresos Totales', 'Precio Promedio', 'Transacciones'];
+        break;
+      default:
+        headers = Object.keys(reporteData.datos[0] || {});
+    }
+
+    headers.forEach((header, index) => {
+      worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`).value = header;
+      worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`).font = { bold: true };
+    });
+    currentRow++;
+
+    // Datos
+    reporteData.datos.forEach(item => {
+      headers.forEach((header, index) => {
+        const cell = worksheet.getCell(`${String.fromCharCode(65 + index)}${currentRow}`);
+        cell.value = item[header.toLowerCase().replace(/\s+/g, '_')] || item[header] || '';
+      });
+      currentRow++;
+    });
+  }
+
+  // Para reporte completo - hojas adicionales
+  if (reporteData.tipo === 'completo') {
+    if (reporteData.topProductos && reporteData.topProductos.length > 0) {
+      const productosSheet = workbook.addWorksheet('Top Productos');
+      productosSheet.getCell('A1').value = 'Top Productos';
+      productosSheet.getCell('A1').font = { size: 14, bold: true };
+
+      ['ID', 'Nombre', 'Categoría', 'Total Vendido', 'Ingresos Totales'].forEach((header, index) => {
+        productosSheet.getCell(`${String.fromCharCode(65 + index)}3`).value = header;
+        productosSheet.getCell(`${String.fromCharCode(65 + index)}3`).font = { bold: true };
+      });
+
+      reporteData.topProductos.forEach((producto, index) => {
+        productosSheet.getCell(`A${index + 4}`).value = producto.producto_id;
+        productosSheet.getCell(`B${index + 4}`).value = producto.nombre;
+        productosSheet.getCell(`C${index + 4}`).value = producto.categoria;
+        productosSheet.getCell(`D${index + 4}`).value = producto.total_vendido;
+        productosSheet.getCell(`E${index + 4}`).value = producto.ingresos_totales;
+      });
+    }
+
+    if (reporteData.categorias && reporteData.categorias.length > 0) {
+      const categoriasSheet = workbook.addWorksheet('Categorías');
+      categoriasSheet.getCell('A1').value = 'Categorías';
+      categoriasSheet.getCell('A1').font = { size: 14, bold: true };
+
+      ['Categoría', 'Cantidad Productos', 'Total Vendido', 'Ingresos Totales'].forEach((header, index) => {
+        categoriasSheet.getCell(`${String.fromCharCode(65 + index)}3`).value = header;
+        categoriasSheet.getCell(`${String.fromCharCode(65 + index)}3`).font = { bold: true };
+      });
+
+      reporteData.categorias.forEach((categoria, index) => {
+        categoriasSheet.getCell(`A${index + 4}`).value = categoria.categoria;
+        categoriasSheet.getCell(`B${index + 4}`).value = categoria.cantidad_productos;
+        categoriasSheet.getCell(`C${index + 4}`).value = categoria.total_vendido;
+        categoriasSheet.getCell(`D${index + 4}`).value = categoria.ingresos_totales;
+      });
+    }
+  }
+
+  // Auto ajustar columnas
+  worksheet.columns.forEach(column => {
+    column.width = 15;
+  });
+
+  return workbook.xlsx.writeBuffer();
+}
+
 // Endpoint para generar reportes
 app.get('/api/reportes', async (req, res) => {
   try {
@@ -1124,7 +1366,41 @@ app.get('/api/reportes', async (req, res) => {
           generado: new Date().toISOString()
         };
         
-        return res.json(reporteData);
+        // Generar respuesta según el formato solicitado para reporte completo
+        if (formato === 'pdf') {
+          try {
+            const pdfBuffer = await generarPDF(reporteData);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename=reporte_completo_${desde}_${hasta}.pdf`);
+            res.send(pdfBuffer);
+          } catch (pdfError) {
+            console.error('Error al generar PDF:', pdfError);
+            res.status(500).json({
+              success: false,
+              error: 'Error al generar el reporte PDF',
+              details: pdfError.message
+            });
+          }
+        } else if (formato === 'excel' || formato === 'xlsx') {
+          try {
+            const excelBuffer = await generarExcel(reporteData);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename=reporte_completo_${desde}_${hasta}.xlsx`);
+            res.send(excelBuffer);
+          } catch (excelError) {
+            console.error('Error al generar Excel:', excelError);
+            res.status(500).json({
+              success: false,
+              error: 'Error al generar el reporte Excel',
+              details: excelError.message
+            });
+          }
+        } else {
+          // Formato JSON por defecto
+          res.json(reporteData);
+        }
+        
+        return;
     }
     
     // Ejecutar la consulta principal
@@ -1152,7 +1428,39 @@ app.get('/api/reportes', async (req, res) => {
       generado: new Date().toISOString()
     };
     
-    res.json(reporteData);
+    // Generar respuesta según el formato solicitado
+    if (formato === 'pdf') {
+      try {
+        const pdfBuffer = await generarPDF(reporteData);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=reporte_${tipo}_${desde}_${hasta}.pdf`);
+        res.send(pdfBuffer);
+      } catch (pdfError) {
+        console.error('Error al generar PDF:', pdfError);
+        res.status(500).json({
+          success: false,
+          error: 'Error al generar el reporte PDF',
+          details: pdfError.message
+        });
+      }
+    } else if (formato === 'excel' || formato === 'xlsx') {
+      try {
+        const excelBuffer = await generarExcel(reporteData);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=reporte_${tipo}_${desde}_${hasta}.xlsx`);
+        res.send(excelBuffer);
+      } catch (excelError) {
+        console.error('Error al generar Excel:', excelError);
+        res.status(500).json({
+          success: false,
+          error: 'Error al generar el reporte Excel',
+          details: excelError.message
+        });
+      }
+    } else {
+      // Formato JSON por defecto
+      res.json(reporteData);
+    }
     
   } catch (error) {
     console.error('Error al generar reporte:', error);

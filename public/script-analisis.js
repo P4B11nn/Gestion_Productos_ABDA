@@ -1976,6 +1976,34 @@ function showReporteLoading() {
     tbody.innerHTML = '<tr><td colspan="100%" class="text-center"><i class="fas fa-spinner fa-spin me-2"></i>Generando reporte...</td></tr>';
 }
 
+// Ocultar loading del reporte
+function hideReporteLoading() {
+    const tbody = document.getElementById('reporte-tabla-body');
+    tbody.innerHTML = '<tr><td colspan="100%" class="text-center"><i class="fas fa-info-circle me-2"></i>Seleccione las fechas y haga clic en "Vista Previa" para ver los datos</td></tr>';
+}
+
+// Mostrar mensaje de éxito en la tabla
+function showReporteSuccess(message) {
+    const tbody = document.getElementById('reporte-tabla-body');
+    tbody.innerHTML = `<tr><td colspan="100%" class="text-center text-success"><i class="fas fa-check-circle me-2"></i>${message}</td></tr>`;
+    
+    // Volver al estado normal después de 3 segundos
+    setTimeout(() => {
+        hideReporteLoading();
+    }, 3000);
+}
+
+// Mostrar mensaje de error en la tabla
+function showReporteError(message) {
+    const tbody = document.getElementById('reporte-tabla-body');
+    tbody.innerHTML = `<tr><td colspan="100%" class="text-center text-danger"><i class="fas fa-exclamation-triangle me-2"></i>${message}</td></tr>`;
+    
+    // Volver al estado normal después de 5 segundos
+    setTimeout(() => {
+        hideReporteLoading();
+    }, 5000);
+}
+
 // Mostrar vista previa del reporte
 function mostrarVistaPrevia(data) {
     const preview = document.getElementById('reporte-preview');
@@ -2144,44 +2172,84 @@ async function descargarReporte() {
             return;
         }
         
-        // Por ahora, solo generamos JSON (se puede extender para PDF/Excel)
-        const url = new URL(`${API_URL}/reportes`, window.location.origin);
-        Object.keys(params).forEach(key => {
-            if (params[key]) url.searchParams.append(key, params[key]);
+        // Mostrar loading
+        showReporteLoading();
+        
+        // Primero obtener los datos JSON para mostrar en la vista previa
+        const dataUrl = new URL(`${API_URL}/reportes`, window.location.origin);
+        const dataParams = { ...params, formato: 'json' }; // Forzar formato JSON para obtener datos
+        Object.keys(dataParams).forEach(key => {
+            if (dataParams[key]) dataUrl.searchParams.append(key, dataParams[key]);
         });
         
-        const response = await fetch(url);
-        const data = await response.json();
+        const dataResponse = await fetch(dataUrl);
+        const data = await dataResponse.json();
         
-        if (data.success) {
-            // Crear archivo para descarga
-            const filename = `reporte_${params.tipo}_${params.desde}_${params.hasta}.json`;
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const downloadUrl = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(downloadUrl);
-            
-            alert('Reporte descargado exitosamente');
-        } else {
-            alert('Error al generar reporte: ' + data.error);
+        if (!data.success) {
+            throw new Error(data.error || 'Error al obtener datos del reporte');
         }
+        
+        // Mostrar los datos en la vista previa
+        mostrarVistaPrevia(data);
+        
+        // Ahora descargar el archivo en el formato solicitado
+        const fileUrl = new URL(`${API_URL}/reportes`, window.location.origin);
+        Object.keys(params).forEach(key => {
+            if (params[key]) fileUrl.searchParams.append(key, params[key]);
+        });
+        
+        const fileResponse = await fetch(fileUrl);
+        
+        if (!fileResponse.ok) {
+            throw new Error('Error al generar el archivo del reporte');
+        }
+        
+        // Determinar el nombre del archivo
+        const formato = params.formato || 'json';
+        let filename;
+        
+        switch (formato) {
+            case 'pdf':
+                filename = `reporte_${params.tipo}_${params.desde}_${params.hasta}.pdf`;
+                break;
+            case 'excel':
+            case 'xlsx':
+                filename = `reporte_${params.tipo}_${params.desde}_${params.hasta}.xlsx`;
+                break;
+            default:
+                filename = `reporte_${params.tipo}_${params.desde}_${params.hasta}.json`;
+        }
+        
+        // Obtener el blob del archivo
+        const blob = await fileResponse.blob();
+        
+        // Crear enlace de descarga
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+        
+        // Mostrar mensaje de éxito en la tabla
+        const tbody = document.getElementById('reporte-tabla-body');
+        tbody.innerHTML = `<tr><td colspan="100%" class="text-center text-success"><i class="fas fa-check-circle me-2"></i>Reporte generado y descargado exitosamente como ${formato.toUpperCase()}</td></tr>`;
         
     } catch (error) {
         console.error('Error al descargar reporte:', error);
-        alert('Error al descargar el reporte');
+        
+        // Mostrar error en la tabla
+        const tbody = document.getElementById('reporte-tabla-body');
+        tbody.innerHTML = `<tr><td colspan="100%" class="text-center text-danger"><i class="fas fa-exclamation-triangle me-2"></i>Error al generar el reporte: ${error.message}</td></tr>`;
     }
 }
 
 // Limpiar filtros del reporte
 function limpiarFiltrosReporte() {
     document.getElementById('reporte-tipo').value = 'ventas';
-    document.getElementById('reporte-formato').value = 'pdf';
+    document.getElementById('reporte-formato').value = 'json';
     document.getElementById('reporte-categoria').value = '';
     document.getElementById('reporte-producto').value = '';
     
