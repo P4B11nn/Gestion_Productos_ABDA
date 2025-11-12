@@ -35,6 +35,13 @@ function setupNavigation() {
     
     navLinks.forEach(link => {
         link.addEventListener('click', function(e) {
+            // Solo prevenir el comportamiento por defecto si tiene data-section
+            const sectionId = this.getAttribute('data-section');
+            if (!sectionId) {
+                // Es un enlace externo, permitir navegación normal
+                return;
+            }
+            
             e.preventDefault();
             
             // Quitar clase activa de todos los enlaces
@@ -44,15 +51,16 @@ function setupNavigation() {
             this.classList.add('active');
             
             // Mostrar sección correspondiente
-            const sectionId = this.getAttribute('data-section');
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.add('d-none');
                 section.classList.remove('active');
             });
             
             const targetSection = document.getElementById(sectionId);
-            targetSection.classList.remove('d-none');
-            targetSection.classList.add('active');
+            if (targetSection) {
+                targetSection.classList.remove('d-none');
+                targetSection.classList.add('active');
+            }
             
             // Cargar datos específicos según la sección
             if (sectionId === 'categorias' && !charts.categorias) {
@@ -63,6 +71,10 @@ function setupNavigation() {
                 loadTendenciasData();
             } else if (sectionId === 'reportes') {
                 initReportesSection();
+            } else if (sectionId === 'inventario') {
+                // Cargar datos de inventario
+                loadBajoStock();
+                loadDemandaAnalisis();
             }
         });
     });
@@ -626,6 +638,22 @@ function setupEventHandlers() {
             ocultarPanelResultados();
         });
     });
+    
+    // Event listeners para filtros de stock
+    const stockCategoriaFiltro = document.getElementById('stock-categoria-filtro');
+    const stockOrdenFiltro = document.getElementById('stock-orden-filtro');
+    
+    if (stockCategoriaFiltro) {
+        stockCategoriaFiltro.addEventListener('change', function() {
+            loadBajoStock();
+        });
+    }
+    
+    if (stockOrdenFiltro) {
+        stockOrdenFiltro.addEventListener('change', function() {
+            loadBajoStock();
+        });
+    }
 }
 
 // Mostrar análisis de un producto específico
@@ -1028,15 +1056,48 @@ async function loadPatronesRecomendaciones(productoId) {
             
             html += '</div>';
             
-            // Agregar información del combo principal si existe
+            // Agregar alertas e indicadores al inicio
+            let alertasHtml = '';
+            
+            // Alerta de combo/recomendación principal
             if (data.data.combo) {
-                html = `
+                alertasHtml += `
                     <div class="alert alert-info mb-3">
                         <i class="fas fa-lightbulb me-2"></i>
-                        <strong>Recomendación Principal:</strong> ${data.data.combo}
+                        <strong>Recomendación de Combo:</strong> ${data.data.combo}
                     </div>
-                ` + html;
+                `;
             }
+            
+            // Alerta de bajo stock
+            if (data.data.bajo_stock) {
+                const alertClass = data.data.bajo_stock.includes('CRÍTICO') ? 'alert-danger' : 'alert-warning';
+                alertasHtml += `
+                    <div class="alert ${alertClass} mb-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Stock:</strong> ${data.data.bajo_stock}
+                    </div>
+                `;
+            }
+            
+            // Alerta de demanda
+            if (data.data.demanda) {
+                let alertClass = 'alert-info';
+                if (data.data.demanda.includes('ALTA DEMANDA')) {
+                    alertClass = 'alert-success';
+                } else if (data.data.demanda.includes('Sin ventas')) {
+                    alertClass = 'alert-secondary';
+                }
+                
+                alertasHtml += `
+                    <div class="alert ${alertClass} mb-3">
+                        <i class="fas fa-chart-line me-2"></i>
+                        <strong>Análisis de Demanda:</strong> ${data.data.demanda}
+                    </div>
+                `;
+            }
+            
+            html = alertasHtml + html;
             
             patronesContainer.innerHTML = html;
         } else {
@@ -2337,3 +2398,319 @@ function procesarParametrosURL() {
         }, 1000);
     }
 }
+
+// Cargar productos con bajo stock
+async function loadBajoStock() {
+    try {
+        // Obtener filtros seleccionados
+        const categoriaFiltro = document.getElementById('stock-categoria-filtro')?.value || '';
+        const ordenFiltro = document.getElementById('stock-orden-filtro')?.value || 'stock_asc';
+        
+        // Construir URL con parámetros
+        let url = `${API_URL}/productos/bajo-stock`;
+        const params = new URLSearchParams();
+        if (categoriaFiltro) {
+            params.append('categoria', categoriaFiltro);
+        }
+        if (ordenFiltro) {
+            params.append('orden', ordenFiltro);
+        }
+        if (params.toString()) {
+            url += '?' + params.toString();
+        }
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        const container = document.getElementById('bajo-stock-container');
+        
+        // Actualizar estadísticas de resumen
+        if (data.success && data.estadisticas) {
+            updateStockResumen(data.estadisticas);
+        }
+        
+        // Actualizar contador
+        const contador = document.getElementById('stock-contador');
+        if (contador && data.success) {
+            contador.textContent = `${data.productos?.length || 0} productos`;
+        }
+        
+        if (data.success && data.productos && data.productos.length > 0) {
+            let html = '<div class="row">';
+            
+            data.productos.forEach(producto => {
+                const nivel = producto.categoria_stock || 'normal';
+                const alertClass = getStockAlertClass(nivel);
+                const iconClass = getStockIconClass(nivel);
+                const badgeClass = getStockBadgeClass(nivel);
+                
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card h-100 ${alertClass}">
+                            <div class="card-body">
+                                <h6 class="card-title">${producto.nombre}</h6>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="badge ${badgeClass}">
+                                        ${nivel.toUpperCase()}
+                                    </span>
+                                    <i class="fas ${getStockIcon(nivel)} ${iconClass}"></i>
+                                </div>
+                                <p class="mb-1"><strong>Stock actual:</strong> ${producto.stock_actual}</p>
+                                <p class="mb-1"><strong>Categoría:</strong> ${producto.categoria || 'Sin categoría'}</p>
+                                <p class="mb-1"><strong>Estado:</strong> ${producto.estado}</p>
+                                ${producto.recomendacion ? `<p class="mb-2 text-info small"><i class="fas fa-lightbulb me-1"></i>${producto.recomendacion}</p>` : ''}
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="showProductoAnalisis(${producto.id})">
+                                        <i class="fas fa-chart-line me-1"></i>Análisis
+                                    </button>
+                                    ${producto.categoria_stock === 'vacio' ? 
+                                        '<button class="btn btn-sm btn-outline-danger" onclick="alertaRestock(' + producto.id + ')"><i class="fas fa-plus me-1"></i>Reabastecer</button>' : 
+                                        ''
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        } else {
+            const mensaje = categoriaFiltro ? 
+                `No hay productos en la categoría "${categoriaFiltro}"` : 
+                '¡Excelente! No hay productos con bajo stock.';
+            container.innerHTML = `<div class="alert alert-success"><i class="fas fa-check-circle me-2"></i>${mensaje}</div>`;
+        }
+        
+    } catch (error) {
+        console.error('Error al cargar productos con bajo stock:', error);
+        document.getElementById('bajo-stock-container').innerHTML = 
+            '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>Error al cargar datos de stock.</div>';
+    }
+}
+
+// Funciones auxiliares para el manejo de estilos de stock
+function getStockAlertClass(nivel) {
+    switch(nivel) {
+        case 'vacio': return 'border-danger';
+        case 'critico': return 'border-warning';
+        case 'bajo': return 'border-info';
+        default: return 'border-success';
+    }
+}
+
+function getStockIconClass(nivel) {
+    switch(nivel) {
+        case 'vacio': return 'text-danger';
+        case 'critico': return 'text-warning';
+        case 'bajo': return 'text-info';
+        default: return 'text-success';
+    }
+}
+
+function getStockBadgeClass(nivel) {
+    switch(nivel) {
+        case 'vacio': return 'bg-danger';
+        case 'critico': return 'bg-warning';
+        case 'bajo': return 'bg-info';
+        default: return 'bg-success';
+    }
+}
+
+function getStockIcon(nivel) {
+    switch(nivel) {
+        case 'vacio': return 'fa-times-circle';
+        case 'critico': return 'fa-exclamation-triangle';
+        case 'bajo': return 'fa-exclamation-circle';
+        default: return 'fa-check-circle';
+    }
+}
+
+// Actualizar resumen de estadísticas de stock
+function updateStockResumen(estadisticas) {
+    document.getElementById('stock-vacio-count').textContent = estadisticas.vacio || 0;
+    document.getElementById('stock-critico-count').textContent = estadisticas.critico || 0;
+    document.getElementById('stock-bajo-count').textContent = estadisticas.bajo || 0;
+    document.getElementById('stock-normal-count').textContent = estadisticas.normal || 0;
+}
+
+// Función para exportar datos de stock
+function exportarStock() {
+    const categoriaFiltro = document.getElementById('stock-categoria-filtro')?.value || '';
+    let url = `${API_URL}/productos/bajo-stock/export`;
+    if (categoriaFiltro) {
+        url += `?categoria=${categoriaFiltro}`;
+    }
+    window.open(url, '_blank');
+}
+
+// Función para alerta de restock
+function alertaRestock(productoId) {
+    // Implementar lógica para crear alerta de reabastecimiento
+    alert(`Alerta de reabastecimiento creada para el producto ${productoId}`);
+}
+
+// Cargar análisis de demanda
+async function loadDemandaAnalisis() {
+    try {
+        const response = await fetch(`${API_URL}/productos/demanda`);
+        const data = await response.json();
+        
+        const container = document.getElementById('demanda-container');
+        const filtro = document.getElementById('demanda-filtro').value;
+        
+        if (data.success && data.demanda && data.demanda.length > 0) {
+            let productos = data.demanda;
+            
+            // Aplicar filtro
+            if (filtro !== 'todas') {
+                productos = productos.filter(producto => {
+                    const categoria = producto.categoria_demanda.toLowerCase();
+                    return categoria === filtro;
+                });
+            }
+            
+            if (productos.length === 0) {
+                container.innerHTML = `<div class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No se encontraron productos con demanda ${filtro}.</div>`;
+                return;
+            }
+            
+            let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr>';
+            html += '<th>Producto</th><th>Categoría</th><th>Demanda Diaria</th><th>Total Vendido</th><th>Días de Stock</th><th>Ingresos</th><th>Acción</th>';
+            html += '</tr></thead><tbody>';
+            
+            productos.forEach(producto => {
+                const badgeClass = {
+                    'alta': 'success',
+                    'media': 'warning', 
+                    'baja': 'info',
+                    'nula': 'secondary'
+                }[producto.categoria_demanda.toLowerCase()] || 'secondary';
+                
+                const stockDias = producto.dias_stock_restante || 'N/A';
+                const stockClass = producto.dias_stock_restante < 7 ? 'text-danger' : producto.dias_stock_restante < 30 ? 'text-warning' : '';
+                
+                html += `
+                    <tr>
+                        <td><strong>${producto.nombre}</strong></td>
+                        <td><span class="badge bg-${badgeClass}">${producto.categoria_demanda}</span></td>
+                        <td>${producto.demanda_diaria}</td>
+                        <td>${producto.unidades_vendidas}</td>
+                        <td class="${stockClass}">${stockDias} días</td>
+                        <td>$${formatNumber(producto.ingresos_totales)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="showProductoAnalisis(${producto.id})">
+                                <i class="fas fa-chart-line"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-info" onclick="loadPronosticoProducto(${producto.id})">
+                                <i class="fas fa-crystal-ball"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = '<div class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No se encontraron datos de demanda.</div>';
+        }
+        
+    } catch (error) {
+        console.error('Error al cargar análisis de demanda:', error);
+        document.getElementById('demanda-container').innerHTML = 
+            '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>Error al cargar análisis de demanda.</div>';
+    }
+}
+
+// Cargar pronóstico para un producto específico
+async function loadPronosticoProducto(productoId) {
+    try {
+        const response = await fetch(`${API_URL}/productos/pronostico/${productoId}`);
+        const data = await response.json();
+        
+        if (data.success && data.pronostico) {
+            // Crear modal o mostrar los datos del pronóstico
+            let modalHtml = `
+                <div class="modal fade" id="pronosticoModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Pronóstico de Demanda</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <h6>Datos Históricos: ${data.pronostico.datos_historicos} días</h6>
+                                <p><strong>Promedio Semanal:</strong> ${data.pronostico.promedio_semanal} unidades</p>
+                                <p><strong>Tendencia:</strong> ${data.pronostico.tendencia_porcentaje}%</p>
+                                
+                                <h6 class="mt-4">Pronóstico para los próximos 7 días:</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead><tr><th>Fecha</th><th>Demanda Estimada</th><th>Confianza</th></tr></thead>
+                                        <tbody>
+            `;
+            
+            data.pronostico.pronostico_7_dias.forEach(dia => {
+                modalHtml += `
+                    <tr>
+                        <td>${dia.fecha}</td>
+                        <td>${dia.demanda_pronosticada} unidades</td>
+                        <td><span class="badge bg-info">${dia.confianza}%</span></td>
+                    </tr>
+                `;
+            });
+            
+            modalHtml += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Agregar modal al DOM y mostrarlo
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            const modal = new bootstrap.Modal(document.getElementById('pronosticoModal'));
+            modal.show();
+            
+            // Limpiar modal cuando se cierre
+            document.getElementById('pronosticoModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+            
+        } else {
+            alert(data.mensaje || 'No se pudo generar el pronóstico');
+        }
+        
+    } catch (error) {
+        console.error('Error al cargar pronóstico:', error);
+        alert('Error al cargar el pronóstico');
+    }
+}
+
+// Event listeners adicionales
+document.addEventListener('DOMContentLoaded', function() {
+    // Event listener para el filtro de demanda
+    const demandaFiltro = document.getElementById('demanda-filtro');
+    if (demandaFiltro) {
+        demandaFiltro.addEventListener('change', function() {
+            if (document.getElementById('inventario-content').classList.contains('active')) {
+                loadDemanda();
+            }
+        });
+    }
+    
+    // Event listener para filtro de bajo stock (si existe)
+    const stockFiltro = document.getElementById('stock-filtro');
+    if (stockFiltro) {
+        stockFiltro.addEventListener('change', function() {
+            if (document.getElementById('inventario-content').classList.contains('active')) {
+                loadBajoStock();
+            }
+        });
+    }
+});

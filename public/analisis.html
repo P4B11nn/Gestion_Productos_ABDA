@@ -221,6 +221,9 @@
                         <a class="nav-link" href="#" data-section="productos">Análisis por Producto</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="#" data-section="inventario">Gestión de Inventario</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#" data-section="categorias">Análisis por Categoría</a>
                     </li>
                     <li class="nav-item">
@@ -228,6 +231,11 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#" data-section="reportes">Reportes</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="patrones.html">
+                            <i class="fas fa-network-wired me-1"></i>Patrones de Compra
+                        </a>
                     </li>
                 </ul>
             </div>
@@ -547,6 +555,117 @@
             </div>
         </section>
         
+        <!-- Sección de Gestión de Inventario -->
+        <section id="inventario" class="section d-none">
+            <h2 class="mb-4">Gestión de Inventario</h2>
+            
+            <!-- Productos con Bajo Stock -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>
+                        <i class="fas fa-boxes me-2"></i>
+                        Productos con Bajo Stock
+                    </span>
+                    <span class="badge bg-secondary" id="stock-contador">Cargando...</span>
+                </div>
+                <div class="card-body">
+                    <!-- Filtros de categoría de stock -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Filtrar por nivel de stock:</label>
+                            <select class="form-select" id="stock-categoria-filtro">
+                                <option value="">Todas las categorías</option>
+                                <option value="vacio">Vacío (0 unidades)</option>
+                                <option value="critico">Crítico (1-100 unidades)</option>
+                                <option value="bajo">Bajo (101-500 unidades)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Ordenar por:</label>
+                            <select class="form-select" id="stock-orden-filtro">
+                                <option value="stock_asc">Stock (menor a mayor)</option>
+                                <option value="stock_desc">Stock (mayor a menor)</option>
+                                <option value="nombre">Nombre (A-Z)</option>
+                                <option value="categoria">Categoría</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button class="btn btn-primary me-2" onclick="loadBajoStock()">
+                                <i class="fas fa-sync me-1"></i>Actualizar
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="exportarStock()">
+                                <i class="fas fa-download me-1"></i>Exportar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Resumen de categorías -->
+                    <div class="row mb-3" id="stock-resumen">
+                        <div class="col-md-3">
+                            <div class="card summary-card bg-light border-0">
+                                <i class="fas fa-times-circle text-danger"></i>
+                                <div class="summary-value text-danger" id="stock-vacio-count">--</div>
+                                <div class="summary-label">Vacío</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card summary-card bg-light border-0">
+                                <i class="fas fa-exclamation-triangle text-warning"></i>
+                                <div class="summary-value text-warning" id="stock-critico-count">--</div>
+                                <div class="summary-label">Crítico</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card summary-card bg-light border-0">
+                                <i class="fas fa-exclamation-circle text-info"></i>
+                                <div class="summary-value text-info" id="stock-bajo-count">--</div>
+                                <div class="summary-label">Bajo</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card summary-card bg-light border-0">
+                                <i class="fas fa-check-circle text-success"></i>
+                                <div class="summary-value text-success" id="stock-normal-count">--</div>
+                                <div class="summary-label">Normal</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="bajo-stock-container">
+                        <div class="loading"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Análisis de Demanda -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Análisis de Demanda
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <select class="form-select" id="demanda-filtro">
+                                <option value="alta">Alta Demanda</option>
+                                <option value="media">Demanda Media</option>
+                                <option value="baja">Baja Demanda</option>
+                                <option value="todas" selected>Todas</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-primary" onclick="loadDemandaAnalisis()">
+                                <i class="fas fa-sync me-1"></i>Actualizar
+                            </button>
+                        </div>
+                    </div>
+                    <div id="demanda-container">
+                        <div class="loading"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Sección de Análisis por Categoría -->
         <section id="categorias" class="section d-none">
             <h2 class="mb-4">Análisis por Categoría</h2>
